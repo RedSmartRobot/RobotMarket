@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Robot NFT Market</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.2/dist/ethers.umd.min.js"></script>
+
+</head>
+
+<body>
+
+<h2>Robot NFT Market</h2>
+
+<div id="account"></div>
+
+<button onclick="connect()">Connect Wallet</button>
+
+<hr>
+
+<h3>Marketplace</h3>
+
+<div id="market"></div>
+
+<hr>
+
+<h3>My Profile</h3>
+
+<button onclick="mintRobot()">Mint Robot</button>
+
+<div id="mine"></div>
+
+<script>
+
+const contractAddress="0x426710616Fcde53C53949e22f082f6915434E3A2";
+
+const server="https://robotnft-proxy.onrender.com/upload";
+
+const abi=[
+
+"function mint(string uri)",
+"function list(uint256,uint256)",
+"function buy(uint256) payable",
+"function ownerOf(uint256) view returns(address)",
+"function tokenURI(uint256) view returns(string)",
+"function items(uint256) view returns(address,uint256,bool)",
+"function nextId() view returns(uint256)"
+
+];
+
+let provider;
+let signer;
+let contract;
+let account;
+
+async function connect(){
+
+provider=new ethers.BrowserProvider(window.ethereum);
+
+await provider.send("eth_requestAccounts",[]);
+
+signer=await provider.getSigner();
+
+account=await signer.getAddress();
+
+document.getElementById("account").innerText=account;
+
+contract=new ethers.Contract(contractAddress,abi,signer);
+
+load();
+
+}
+
+const colors=["red","orange","yellow","green","blue","indigo","violet"];
+
+function r(){
+
+return colors[Math.floor(Math.random()*7)];
+
+}
+
+function randomRobot(){
+
+return{
+
+head:r(),
+body:r(),
+leftArm:r(),
+rightArm:r(),
+leftLeg:r(),
+rightLeg:r(),
+antenna:r()
+
+}
+
+}
+
+function svg(parts){
+
+return `
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">
+
+<rect x="120" y="50" width="160" height="100"
+fill="${parts.head}" stroke="black" stroke-width="6"/>
+
+<circle cx="170" cy="90" r="12" fill="white"/>
+<circle cx="230" cy="90" r="12" fill="white"/>
+
+<rect x="160" y="110" width="80" height="15"
+fill="white" stroke="black"/>
+
+<line x1="200" y1="50" x2="200" y2="20"
+stroke="${parts.antenna}" stroke-width="5"/>
+
+<circle cx="200" cy="15" r="8"
+fill="${parts.antenna}"/>
+
+<rect x="120" y="150" width="160" height="150"
+fill="${parts.body}" stroke="black" stroke-width="6"/>
+
+<rect x="80" y="180" width="40" height="20"
+fill="${parts.leftArm}" stroke="black"/>
+
+<rect x="280" y="180" width="40" height="20"
+fill="${parts.rightArm}" stroke="black"/>
+
+<rect x="160" y="300" width="25" height="50"
+fill="${parts.leftLeg}" stroke="black"/>
+
+<rect x="215" y="300" width="25" height="50"
+fill="${parts.rightLeg}" stroke="black"/>
+
+</svg>
+
+`;
+
+}
+
+function svgURI(svg){
+
+return "data:image/svg+xml;base64,"+btoa(svg);
+
+}
+
+async function mintRobot(){
+
+const parts=randomRobot();
+
+const image=svgURI(svg(parts));
+
+const metadata={
+
+name:"Robot NFT",
+
+description:"Auto generated robot",
+
+image:image,
+
+attributes:Object.entries(parts).map(
+([k,v])=>({trait_type:k,value:v})
+)
+
+};
+
+const res=await fetch(server,{
+
+method:"POST",
+
+headers:{"Content-Type":"application/json"},
+
+body:JSON.stringify(metadata)
+
+});
+
+const data=await res.json();
+
+const tx=await contract.mint(data.ipfsUrl);
+
+await tx.wait();
+
+load();
+
+}
+
+async function load(){
+
+const total=await contract.nextId();
+
+let m="";
+let p="";
+
+for(let i=0;i<total;i++){
+
+const owner=await contract.ownerOf(i);
+
+const item=await contract.items(i);
+
+const uri=await contract.tokenURI(i);
+
+const meta=await fetch(
+uri.replace("ipfs://",
+"https://gateway.pinata.cloud/ipfs/")
+).then(r=>r.json());
+
+if(item.forSale){
+
+m+=`
+<div>
+
+<img width=120 src="${meta.image}">
+
+Price:
+${ethers.formatEther(item.price)}
+
+<button onclick="buy(${i},'${item.price}')">
+Buy
+</button>
+
+</div>
+`;
+
+}
+
+if(owner.toLowerCase()==account.toLowerCase()){
+
+p+=`
+<div>
+
+<img width=120 src="${meta.image}">
+
+<button onclick="sell(${i})">
+Sell
+</button>
+
+</div>
+`;
+
+}
+
+}
+
+document.getElementById("market").innerHTML=m;
+
+document.getElementById("mine").innerHTML=p;
+
+}
+
+async function sell(id){
+
+const price=prompt("Price in ETH");
+
+const wei=ethers.parseEther(price);
+
+const tx=await contract.list(id,wei);
+
+await tx.wait();
+
+load();
+
+}
+
+async function buy(id,price){
+
+const tx=await contract.buy(id,{value:price});
+
+await tx.wait();
+
+load();
+
+}
+
+</script>
+
+</body>
+
+</html>
