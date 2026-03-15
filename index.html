@@ -42,10 +42,12 @@ const abi=[
 "function mint(string uri)",
 "function list(uint256,uint256)",
 "function buy(uint256) payable",
+"function approve(address,uint256)",
 "function ownerOf(uint256) view returns(address)",
 "function tokenURI(uint256) view returns(string)",
 "function items(uint256) view returns(address,uint256,bool)",
-"function nextId() view returns(uint256)"
+"function nextId() view returns(uint256)",
+"function withdraw(uint256)"
 
 ];
 
@@ -211,7 +213,7 @@ m+=`
 <img width=120 src="${meta.image}">
 
 Price:
-${ethers.formatEther(item.price)}
+${ethers.formatEther(item.price)} ETH
 
 <button onclick="buy(${i},'${item.price}')">
 Buy
@@ -238,6 +240,24 @@ Sell
 
 }
 
+if(item.forSale && item.seller.toLowerCase()==account.toLowerCase()){
+
+p+=`
+<div>
+
+<img width=120 src="${meta.image}">
+
+Listed for ${ethers.formatEther(item.price)} ETH
+
+<button onclick="withdraw(${i})">
+Cancel Listing
+</button>
+
+</div>
+`;
+
+}
+
 }
 
 document.getElementById("market").innerHTML=m;
@@ -250,7 +270,13 @@ async function sell(id){
 
 const price=prompt("Price in ETH");
 
+if(!price) return;
+
 const wei=ethers.parseEther(price);
+
+const approveTx=await contract.approve(contractAddress,id);
+
+await approveTx.wait();
 
 const tx=await contract.list(id,wei);
 
@@ -263,6 +289,16 @@ load();
 async function buy(id,price){
 
 const tx=await contract.buy(id,{value:price});
+
+await tx.wait();
+
+load();
+
+}
+
+async function withdraw(id){
+
+const tx=await contract.withdraw(id);
 
 await tx.wait();
 
